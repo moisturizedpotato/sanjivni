@@ -1,0 +1,19 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Arogya Health</title>
+
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="dark">
+<main id="app" class="app-shell" aria-live="polite"></main>
+
+<script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script defer src="{% static 'js/app-config.js' %}"></script>
+<script defer src="{% static 'js/app-runtime.js' %}"></script>
+<script defer src="{% static 'js/app.js' %}?v=20260822"></script>
+</body>
+</html>

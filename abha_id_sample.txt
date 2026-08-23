@@ -1,0 +1,6 @@
+Name: Rahul Sharma
+Age: 28
+Blood Group: O+
+ABHA ID: 12-3456-7890-1234
+Gender: Male
+Allergies: None
