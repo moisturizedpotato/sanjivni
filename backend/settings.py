@@ -15,6 +15,7 @@ import os
 import secrets
 
 from dotenv import load_dotenv
+import dj_database_url
 
 load_dotenv()
 
@@ -29,7 +30,8 @@ def env_bool(name, default=False):
     return os.getenv(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
-DEBUG = env_bool('DJANGO_DEBUG', True)
+VERCEL_DEPLOYMENT = env_bool('VERCEL', False)
+DEBUG = env_bool('DJANGO_DEBUG', not VERCEL_DEPLOYMENT)
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     if DEBUG:
@@ -41,17 +43,20 @@ def env_list(name, default):
     return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
 
 
-ALLOWED_HOSTS = env_list(
-    'DJANGO_ALLOWED_HOSTS',
-    'localhost,127.0.0.1,testserver' if DEBUG else ''
-)
+default_hosts = 'localhost,127.0.0.1,testserver' if DEBUG else '.vercel.app'
+if os.getenv('VERCEL_URL'):
+    default_hosts += ',' + os.getenv('VERCEL_URL')
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', default_hosts)
 if not DEBUG and not ALLOWED_HOSTS:
     raise RuntimeError('DJANGO_ALLOWED_HOSTS must be set when DJANGO_DEBUG is false')
 
-CSRF_TRUSTED_ORIGINS = env_list(
-    'DJANGO_CSRF_TRUSTED_ORIGINS',
+default_origins = (
     'http://localhost:8000,http://127.0.0.1:8000,http://testserver'
+    if DEBUG else 'https://*.vercel.app'
 )
+if os.getenv('VERCEL_URL'):
+    default_origins += ',https://' + os.getenv('VERCEL_URL')
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', default_origins)
 
 
 # Application definition
@@ -122,10 +127,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600,
+        conn_health_checks=True,
+        ssl_require=not DEBUG and os.getenv('DATABASE_URL', '').startswith(('postgres://', 'postgresql://')),
+    )
 }
 
 
@@ -191,13 +198,8 @@ ENABLE_MOCK_DIGILOCKER = env_bool('ENABLE_MOCK_DIGILOCKER', DEBUG)
 
 if not DEBUG:
     required_production = {
-        'EMAIL_HOST': EMAIL_HOST,
-        'EMAIL_HOST_USER': EMAIL_HOST_USER,
-        'EMAIL_HOST_PASSWORD': EMAIL_HOST_PASSWORD,
-        'DIGILOCKER_CLIENT_ID': os.getenv('DIGILOCKER_CLIENT_ID'),
-        'DIGILOCKER_CLIENT_SECRET': DIGILOCKER_CLIENT_SECRET,
-        'DIGILOCKER_REDIRECT_URI': os.getenv('DIGILOCKER_REDIRECT_URI'),
-        'DJANGO_CORS_ALLOWED_ORIGINS': os.getenv('DJANGO_CORS_ALLOWED_ORIGINS'),
+        'DJANGO_SECRET_KEY': os.getenv('DJANGO_SECRET_KEY'),
+        'DATABASE_URL': os.getenv('DATABASE_URL'),
     }
     missing = [name for name, value in required_production.items() if not value]
     if missing:
@@ -209,6 +211,6 @@ CSRF_COOKIE_HTTPONLY = False
 SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '3600' if not DEBUG else '0'))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-SECURE_HSTS_PRELOAD = False
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', not DEBUG)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
