@@ -39,6 +39,14 @@ SCHEMA = {
     'confidence_by_field': {},
     'overall_confidence': 0.0,
 }
+CLINICAL_CONFIDENCE_THRESHOLD = 0.25
+
+
+def _confidence_value(value):
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _fallback(reason='unavailable'):
@@ -56,21 +64,25 @@ def _normalise(data):
     result['medicines'] = []
     confidence = data.get('confidence_by_field', {})
     result['confidence_by_field'] = {
-        str(key): max(0.0, min(1.0, float(value)))
+        str(key): _confidence_value(value)
         for key, value in confidence.items()
         if isinstance(value, (int, float, str)) and str(value).strip()
     }
-    result['overall_confidence'] = max(0.0, min(1.0, float(data.get('overall_confidence', 0) or 0)))
+    result['overall_confidence'] = _confidence_value(data.get('overall_confidence', 0))
     for index, medicine in enumerate(data.get('medicines', []), 1):
         if isinstance(medicine, dict):
+            item_confidence = medicine.get('confidence_by_field', {}) or {}
             item = {
-                field: str(medicine.get(field, '') or '')
+                field: (
+                    str(medicine.get(field, '') or '')
+                    if _confidence_value(item_confidence.get(field, 0.0)) >= CLINICAL_CONFIDENCE_THRESHOLD
+                    else ''
+                )
                 for field in ('medicine_name', 'dosage', 'frequency', 'duration', 'instructions')
             }
-            item_confidence = medicine.get('confidence_by_field', {})
             for field, value in item_confidence.items():
                 if isinstance(value, (int, float, str)) and str(value).strip():
-                    result['confidence_by_field'][f'medicine_{index}_{field}'] = max(0.0, min(1.0, float(value)))
+                    result['confidence_by_field'][f'medicine_{index}_{field}'] = _confidence_value(value)
             result['medicines'].append(item)
     return result
 
