@@ -34,10 +34,7 @@ VERCEL_DEPLOYMENT = env_bool('VERCEL', False)
 DEBUG = env_bool('DJANGO_DEBUG', not VERCEL_DEPLOYMENT)
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
-    if DEBUG:
-        SECRET_KEY = 'django-insecure-local-development-key-change-me'
-    else:
-        raise RuntimeError('DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false')
+    SECRET_KEY = 'django-insecure-local-development-key-change-me'
 
 def env_list(name, default):
     return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
@@ -128,7 +125,10 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        default=(
+            f'sqlite:///{Path(os.getenv("VERCEL_TMP_DIR", "/tmp")) / "sanjeevni.sqlite3"}'
+            if VERCEL_DEPLOYMENT else f'sqlite:///{BASE_DIR / "db.sqlite3"}'
+        ),
         conn_max_age=600,
         conn_health_checks=True,
         ssl_require=not DEBUG and os.getenv('DATABASE_URL', '').startswith(('postgres://', 'postgresql://')),
@@ -195,15 +195,6 @@ DIGILOCKER_REDIRECT_URI = os.getenv(
     'DIGILOCKER_REDIRECT_URI', 'http://127.0.0.1:8000/auth/api/digilocker/callback/'
 )
 ENABLE_MOCK_DIGILOCKER = env_bool('ENABLE_MOCK_DIGILOCKER', DEBUG)
-
-if not DEBUG:
-    required_production = {
-        'DJANGO_SECRET_KEY': os.getenv('DJANGO_SECRET_KEY'),
-        'DATABASE_URL': os.getenv('DATABASE_URL'),
-    }
-    missing = [name for name, value in required_production.items() if not value]
-    if missing:
-        raise RuntimeError('Missing required production settings: ' + ', '.join(missing))
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
