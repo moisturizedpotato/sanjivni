@@ -44,6 +44,10 @@ default_hosts = 'localhost,127.0.0.1,testserver' if DEBUG else '.vercel.app'
 if os.getenv('VERCEL_URL'):
     default_hosts += ',' + os.getenv('VERCEL_URL')
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', default_hosts)
+if not DEBUG and '.vercel.app' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.vercel.app')
+if os.getenv('VERCEL_URL') and os.getenv('VERCEL_URL') not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(os.getenv('VERCEL_URL'))
 if not DEBUG and not ALLOWED_HOSTS:
     raise RuntimeError('DJANGO_ALLOWED_HOSTS must be set when DJANGO_DEBUG is false')
 
