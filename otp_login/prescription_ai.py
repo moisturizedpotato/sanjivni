@@ -14,10 +14,17 @@ OCR_MODELS = tuple(
     model.strip()
     for model in os.getenv(
         'GOOGLE_OCR_MODELS',
-        'gemini-3.7-flash',
+        'gemini-2.5-flash,gemma-4-31b,gemma-4-26b',
     ).split(',')
     if model.strip()
 )
+
+
+def _is_rate_limit_error(exc):
+    message = str(exc).lower()
+    return any(value in message for value in (
+        '429', 'rate limit', 'rate_limit', 'resource exhausted', 'quota',
+    ))
 
 SCHEMA = {
     'doctor_name': '',

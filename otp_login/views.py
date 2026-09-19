@@ -472,7 +472,11 @@ class LinkDigiLockerAPI(APIView):
                     note=dummy_abha['note'],
                 )
         if not document:
-            return Response({'error': 'No ABHA ID card found in DigiLocker'}, status=404)
+            return Response({
+                'profile': _profile_payload(profile),
+                'linked': False,
+                'message': 'No ABHA ID card was found in DigiLocker. Upload the ABHA text file instead.',
+            }, status=200)
 
         note = document.note or ''
         abha_match = re.search(r'ABHA\s*ID\s*:\s*([\d-]+)', note, re.IGNORECASE)
@@ -525,12 +529,16 @@ class PrescriptionUploadAPI(APIView):
         from .prescription_ai import extract_prescription_from_image
         extracted = extract_prescription_from_image(draft.uploaded_image.path)
         if extracted.get('fallback_result') and not extracted.get('upload_allowed', False):
-            draft.uploaded_image.delete(save=False)
-            draft.delete()
+            extracted['ocr_pending'] = True
+            draft.extracted_data = extracted
+            draft.raw_gemini_response = json.dumps(extracted, ensure_ascii=False)
+            draft.save(update_fields=['extracted_data', 'raw_gemini_response', 'updated_at'])
+            logger.warning('prescription_event action=ocr_pending providers=%s', extracted.get('provider_attempts', []))
             return Response({
-                'error': extracted.get('error', 'Prescription OCR failed'),
+                **_prescription_payload(draft),
+                'warning': 'Prescription uploaded, but OCR is temporarily unavailable. Please retry analysis later.',
                 'provider_attempts': extracted.get('provider_attempts', []),
-            }, status=502)
+            }, status=201)
         draft.extracted_data = extracted
         draft.raw_gemini_response = json.dumps(extracted, ensure_ascii=False)
         draft.save(update_fields=['extracted_data', 'raw_gemini_response', 'updated_at'])

@@ -1,8 +1,25 @@
 # otp_login/agent.py
 import json
 import logging
+import os
 
 logger = logging.getLogger('otp_login.security')
+
+AGENT_MODELS = tuple(
+    model.strip()
+    for model in os.getenv(
+        'GOOGLE_AGENT_MODELS',
+        'gemini-2.5-flash,gemma-4-31b,gemma-4-26b',
+    ).split(',')
+    if model.strip()
+)
+
+
+def _is_rate_limit_error(exc):
+    message = str(exc).lower()
+    return any(value in message for value in (
+        '429', 'rate limit', 'rate_limit', 'resource exhausted', 'quota',
+    ))
 
 
 def _extract_text_from_response(response):
@@ -37,7 +54,6 @@ def generate_health_summary(patient_data: str) -> str:
         from langchain_core.prompts import PromptTemplate
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        llm = ChatGoogleGenerativeAI(temperature=0, model='gemini-3.6-flash')
         template = """
         You are an expert medical AI assistant. Your task is to generate a comprehensive 1-page health brief for a doctor based on the patient's provided data.
 
@@ -70,12 +86,23 @@ def generate_health_summary(patient_data: str) -> str:
         Generate the summary now. Do not include any conversational filler before or after the template.
         """
         prompt = PromptTemplate.from_template(template)
-        chain = prompt | llm
-        response = chain.invoke({'patient_data': patient_data})
-        summary = _extract_text_from_response(response).strip()
-        if not summary:
-            raise ValueError('Empty Gemini response')
-        return summary
+        last_error = None
+        for model in AGENT_MODELS:
+            try:
+                llm = ChatGoogleGenerativeAI(temperature=0, model=model)
+                response = (prompt | llm).invoke({'patient_data': patient_data})
+                summary = _extract_text_from_response(response).strip()
+                if not summary:
+                    raise ValueError('Empty model response')
+                logger.info('health_summary action=generate result=success model=%s', model)
+                return summary
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    'health_summary action=provider_failed model=%s rate_limited=%s error_type=%s',
+                    model, _is_rate_limit_error(exc), type(exc).__name__,
+                )
+        raise last_error or RuntimeError('No AI models configured')
     except Exception as exc:
         logger.warning('health_summary action=generate result=fallback error_type=%s', type(exc).__name__)
         return (
@@ -175,13 +202,13 @@ def fetch_patient_medical_history(phone_number: str) -> str:
 # AGENT INITIALIZATION
 # ============================================
 
-def get_symptom_agent():
+def get_symptom_agent(model=None):
     """Build and return the Symptom Checker Agent with access to patient data tools."""
     from langchain_core.tools import tool
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     # Initialize Gemini model
-    llm = ChatGoogleGenerativeAI(temperature=0.3, model="gemini-3.6-flash")
+    llm = ChatGoogleGenerativeAI(temperature=0.3, model=model or AGENT_MODELS[0])
     
     # Define available tools
     tools = [tool(fetch_patient_profile), tool(fetch_patient_medical_history)]
@@ -196,7 +223,7 @@ def get_symptom_agent():
 # SYMPTOM ANALYSIS WITH AI AGENT
 # ============================================
 
-def format_agent_response(user_text, phone_number):
+def _format_agent_response_once(user_text, phone_number, model):
     """
     Use the AI to analyze symptoms based on patient's complete medical history.
     Calls LLM with tools, processes the response, and handles tool calls.
@@ -210,7 +237,7 @@ def format_agent_response(user_text, phone_number):
     try:
         log_event('start')
         
-        llm_with_tools = get_symptom_agent()
+        llm_with_tools = get_symptom_agent(model)
         log_event('agent_created', 'success')
         
         # Build prompt
@@ -304,9 +331,24 @@ Respond with ONLY the JSON object, no other text."""
             
     except Exception:
         log_event('processing', 'fallback')
-        
-        return {
-            "specialist": "General Physician",
-            "urgency": "medium",
-            "advice": "Please consult a doctor for a comprehensive evaluation of your symptoms."
-        }
+        raise
+
+
+def format_agent_response(user_text, phone_number):
+    """Analyze symptoms, falling back to the next model when a provider fails."""
+    for model in AGENT_MODELS:
+        try:
+            result = _format_agent_response_once(user_text, phone_number, model)
+            logger.info('symptom_agent action=analyze result=success model=%s', model)
+            return result
+        except Exception as exc:
+            logger.warning(
+                'symptom_agent action=provider_failed model=%s rate_limited=%s error_type=%s',
+                model, _is_rate_limit_error(exc), type(exc).__name__,
+            )
+    return {
+        "specialist": "General Physician",
+        "urgency": "medium",
+        "advice": "The AI service is temporarily unavailable. Please consult a General Physician for an in-person evaluation.",
+        "degraded": True,
+    }
