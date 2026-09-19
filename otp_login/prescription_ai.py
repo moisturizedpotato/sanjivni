@@ -14,7 +14,7 @@ OCR_MODELS = tuple(
     model.strip()
     for model in os.getenv(
         'GOOGLE_OCR_MODELS',
-        'gemini-2.5-flash,gemma-4-31b,gemma-4-26b',
+        'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash',
     ).split(',')
     if model.strip()
 )
