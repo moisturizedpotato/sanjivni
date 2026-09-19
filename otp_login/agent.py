@@ -1,9 +1,6 @@
 # otp_login/agent.py
 import json
 import logging
-from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
 
 logger = logging.getLogger('otp_login.security')
 
@@ -37,6 +34,9 @@ def _extract_text_from_response(response):
 def generate_health_summary(patient_data: str) -> str:
     """Uses Gemini to generate a structured 1-page health brief."""
     try:
+        from langchain_core.prompts import PromptTemplate
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
         llm = ChatGoogleGenerativeAI(temperature=0, model='gemini-3.6-flash')
         template = """
         You are an expert medical AI assistant. Your task is to generate a comprehensive 1-page health brief for a doctor based on the patient's provided data.
@@ -159,14 +159,12 @@ def _fetch_patient_medical_history_impl(phone_number: str) -> str:
 
 
 # Create wrapped tools for the agent
-@tool
 def fetch_patient_profile(phone_number: str) -> str:
     """Fetch complete patient profile including personal details.
     Use this to get patient's name, age, blood group, and ABHA ID."""
     return _fetch_patient_profile_impl(phone_number)
 
 
-@tool
 def fetch_patient_medical_history(phone_number: str) -> str:
     """Fetch patient's medical history from DigiLocker including documents, vaccinations, and health records.
     Use this to understand the patient's medical background."""
@@ -179,12 +177,14 @@ def fetch_patient_medical_history(phone_number: str) -> str:
 
 def get_symptom_agent():
     """Build and return the Symptom Checker Agent with access to patient data tools."""
-    
+    from langchain_core.tools import tool
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
     # Initialize Gemini model
     llm = ChatGoogleGenerativeAI(temperature=0.3, model="gemini-3.6-flash")
     
     # Define available tools
-    tools = [fetch_patient_profile, fetch_patient_medical_history]
+    tools = [tool(fetch_patient_profile), tool(fetch_patient_medical_history)]
     
     # Bind tools directly to the model
     llm_with_tools = llm.bind_tools(tools)

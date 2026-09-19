@@ -531,7 +531,7 @@ function buildDoctors(){
   // Function for Doctor Portal or Test UI to push documents to DigiLocker
 window.doctorUploadToDigiLocker = async (title, docType, doctorName, clinicalNote) => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/auth/mock-api/public/oauth2/1/files/upload', {
+    const res = await fetch('/auth/mock-api/public/oauth2/1/files/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1389,7 +1389,7 @@ window.openMedOrder=key=>{
 
 window.syncDigiLockerFiles = async () => {
   try {
-    const response = await fetch('http://127.0.0.1:8000/auth/api/vault/sync-digilocker/', {
+    const response = await fetch('/auth/api/vault/sync-digilocker/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -1429,7 +1429,7 @@ window.saveRecordToDigiLocker = async () => {
   }
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/auth/mock-api/public/oauth2/1/files/upload', {
+    const res = await fetch('/auth/mock-api/public/oauth2/1/files/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1511,7 +1511,7 @@ window.checkSym = async () => {
   render();
 
   const fullPhone = APP.loginPhone ? '+91' + APP.loginPhone : '';
-  const url = 'http://127.0.0.1:8000/auth/api/agent/symptoms/';
+  const url = '/auth/api/agent/symptoms/';
 
   try {
     const response = await fetch(url, {
@@ -1564,7 +1564,7 @@ window.checkMed = async () => {
 
   try {
     // 2. Call your new Django API
-    const response = await fetch('http://127.0.0.1:8000/auth/api/agent/medicine/', {
+    const response = await fetch('/auth/api/agent/medicine/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: APP.medInput })
@@ -1623,7 +1623,7 @@ window.generateAISummary = async () => {
       throw new Error('Your signed-in phone number is unavailable. Please log in again.');
     }
 
-    const response = await fetch('http://127.0.0.1:8000/auth/api/agent/summary/', {
+    const response = await fetch('/auth/api/agent/summary/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({phone})
@@ -1656,7 +1656,7 @@ window.sendOTP = async () => {
   const fullPhoneNumber = '+91' + APP.loginPhone;
   
   try {
-    const response = await fetch('http://127.0.0.1:8000/auth/api/send-otp/', {
+    const response = await fetch('/auth/api/send-otp/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // Send the full number
@@ -1705,7 +1705,7 @@ window.verifyOTP = async () => {
   APP.loginOtp = otp;
     
     try {
-        const res = await fetch('http://127.0.0.1:8000/auth/api/verify-otp/', {
+        const res = await fetch('/auth/api/verify-otp/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone: phone, otp: otp })
