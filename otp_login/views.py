@@ -1018,6 +1018,7 @@ class SendOTPAPI(APIView):
     permission_classes = [AllowAny]
     def post(self, request):
         phone = str(request.data.get('phone', '')).strip()
+        email = str(request.data.get('email', '')).strip().lower()
         
         if not phone:
             return Response({"error": "Unable to process request"}, status=400)
@@ -1047,19 +1048,26 @@ class SendOTPAPI(APIView):
                 )
                 if not profile_created and profile.phone_number != phone:
                     return Response({"error": "Unable to process request"}, status=409)
+            if email and user.email != email:
+                user.email = email
+                user.save(update_fields=['email'])
         except IntegrityError:
             return Response({"error": "Unable to process request"}, status=409)
 
-        sent = generate_and_send_sms_otp(user, phone, request.META.get('REMOTE_ADDR'))
-        return Response({"message": "OTP request accepted", "new_account": created}, status=200 if sent else 429)
+        sent = generate_and_send_sms_otp(
+            user, phone, request_ip=request.META.get('REMOTE_ADDR'), email=email
+        )
+        if not sent:
+            return Response({"error": "OTP delivery is not configured. Please contact support."}, status=503)
+        return Response({"message": "OTP request accepted", "new_account": created}, status=200)
 
 class VerifyOTPAPI(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     
     def post(self, request):
-        phone = request.data.get('phone')
-        entered_otp = request.data.get('otp')
+        phone = _canonical_phone(request.data.get('phone'))
+        entered_otp = str(request.data.get('otp', '')).strip()
         
         if not phone or not entered_otp:
             return Response({"error": "Unable to verify credentials"}, status=400)
@@ -1070,7 +1078,7 @@ class VerifyOTPAPI(APIView):
                 raise UserProfile.DoesNotExist
             otp_record = OTP.objects.get(user=profile.user)
             
-            valid, _ = verify_otp(otp_record, entered_otp)
+            valid, reason = verify_otp(otp_record, entered_otp)
             if valid:
                 refresh = RefreshToken.for_user(profile.user)
                 otp_record.delete()
@@ -1080,10 +1088,10 @@ class VerifyOTPAPI(APIView):
                     "needs_onboarding": not bool(profile.abha_id)
                 }, status=status.HTTP_200_OK)
                 return _set_auth_cookies(response, refresh)
-            return Response({"error": "Unable to verify credentials"}, status=400)
+            return Response({"error": f"OTP verification failed: {reason}"}, status=400)
                 
         except (UserProfile.DoesNotExist, OTP.DoesNotExist):
-            return Response({"error": "Unable to verify credentials"}, status=400)
+            return Response({"error": "No active OTP was found. Request a new code."}, status=400)
 
 
 class CSRFTokenAPI(APIView):

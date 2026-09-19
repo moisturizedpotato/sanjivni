@@ -1,10 +1,12 @@
 # otp_login/utils.py
 import logging
+import os
 import secrets
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
 from django.utils import timezone
 from .models import OTP
 
@@ -16,7 +18,7 @@ OTP_MAX_ATTEMPTS = 5
 OTP_SEND_COOLDOWN = timedelta(minutes=1)
 
 
-def generate_and_send_sms_otp(user, phone_number, request_ip=None):
+def generate_and_send_sms_otp(user, phone_number, request_ip=None, email=None):
     now = timezone.now()
     is_local_request = bool(
         request_ip in {'127.0.0.1', '::1', 'localhost'}
@@ -28,6 +30,27 @@ def generate_and_send_sms_otp(user, phone_number, request_ip=None):
         return False
 
     otp_code = '123456' if is_local_request else f'{secrets.randbelow(1000000):06d}'
+
+    if not is_local_request:
+        recipient = str(email or user.email or '').strip()
+        from_email = os.getenv('OTP_EMAIL_FROM', os.getenv('EMAIL_HOST_USER', '')).strip()
+        if not recipient or not from_email:
+            logger.error('otp_delivery action=send_otp result=email_not_configured')
+            return False
+
+        try:
+            delivered = send_mail(
+                'Your Sanjeevni verification code',
+                f'Your Sanjeevni verification code is {otp_code}. It expires in 10 minutes.',
+                from_email,
+                [recipient],
+                fail_silently=False,
+            )
+            if delivered != 1:
+                return False
+        except Exception:
+            logger.exception('otp_delivery action=send_otp result=email_error')
+            return False
 
     OTP.objects.update_or_create(
         user=user,
