@@ -1,4 +1,33 @@
 
+const nativeFetch = window.fetch.bind(window);
+let refreshInProgress = null;
+function csrfCookie() {
+  const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+async function ensureCsrfCookie() {
+  if (!csrfCookie()) await nativeFetch('/auth/api/csrf/', {credentials: 'include'});
+  return csrfCookie();
+}
+window.fetch = async (input, init = {}) => {
+  const options = {...init, credentials: 'include', headers: {...(init.headers || {})}};
+  const method = (options.method || 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const token = await ensureCsrfCookie();
+    if (token) options.headers['X-CSRFToken'] = token;
+  }
+  let response = await nativeFetch(input, options);
+  if (response.status === 401 && !options._skipRefresh && !String(input).includes('/auth/api/auth/refresh/')) {
+    refreshInProgress ||= nativeFetch('/auth/api/auth/refresh/', {
+      method: 'POST', credentials: 'include', headers: {'X-CSRFToken': csrfCookie()}
+    }).finally(() => { refreshInProgress = null; });
+    const refreshed = await refreshInProgress;
+    if (refreshed.ok) response = await nativeFetch(input, options);
+    else await nativeFetch('/auth/api/auth/logout/', {method:'POST', credentials:'include', headers:{'X-CSRFToken':csrfCookie()}});
+  }
+  return response;
+};
+
 function genQR(data, size) {
   try {
     const qr = qrcode(0, 'M');
@@ -14,7 +43,7 @@ function genQR(data, size) {
 }
 
 function getSignedInPhone() {
-  const value = APP.loginPhone || localStorage.getItem('arogya_user_phone') || '';
+  const value = APP.loginPhone || '';
   const digits = value.replace(/\D/g, '').replace(/^91/, '');
   return digits.length === 10 ? '+91' + digits : '';
 }
@@ -520,7 +549,6 @@ window.doctorUploadToDigiLocker = async (title, docType, doctorName, clinicalNot
       showToast(data.error || "Upload failed");
     }
   } catch (err) {
-    console.error("Upload error:", err);
     showToast("Network error uploading to DigiLocker");
   }
 };
@@ -1359,12 +1387,12 @@ window.openMedOrder=key=>{
   APP.medInput=key;APP.medRes=data;APP.medTab='branded';setScreen('ai-medicine');
 };
 
-window.syncDigiLockerFiles = async (token) => {
+window.syncDigiLockerFiles = async () => {
   try {
     const response = await fetch('http://127.0.0.1:8000/auth/api/vault/sync-digilocker/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dl_token: token })
+      body: JSON.stringify({})
     });
 
     if (response.ok) {
@@ -1382,7 +1410,6 @@ window.syncDigiLockerFiles = async (token) => {
       showToast("Failed to fetch DigiLocker records.");
     }
   } catch (err) {
-    console.error("DigiLocker Sync failed:", err);
     showToast("Network error while syncing DigiLocker.");
   }
   
@@ -1420,8 +1447,7 @@ window.saveRecordToDigiLocker = async () => {
       
       // Auto-trigger a sync so the newly created SQL record shows immediately in the Vault
       if (typeof syncDigiLockerFiles === 'function') {
-        const activeToken = localStorage.getItem('dl_token') || "token_active_session";
-        syncDigiLockerFiles(activeToken);
+        syncDigiLockerFiles();
       } else {
         render();
       }
@@ -1429,13 +1455,11 @@ window.saveRecordToDigiLocker = async () => {
       showToast(data.error || "Upload failed");
     }
   } catch (err) {
-    console.error("Upload error:", err);
     showToast("Server connection error during upload.");
   }
 };
 
 window.openAddModal = () => {
-  console.log("Opening modal..."); // Debugging log
   APP.showAddModal = true;
   render();
 };
@@ -1466,14 +1490,12 @@ window.toggleShare=(id,hrs)=>{APP.records=APP.records.map(r=>r.id===id?{...r,sha
 // Replace this function in app.js
 // In app.js: Update window.checkSym with full console logs
 window.checkSym = async () => {
-  console.log("1. checkSym triggered");
 
   const inp = document.getElementById('symInput');
   if (inp) {
     APP.symInput = inp.value;
   }
   
-  console.log("2. symInput value:", APP.symInput);
 
   if (!APP.symInput || APP.symInput.trim() === "") {
     alert("Please enter symptoms before analyzing.");
@@ -1492,7 +1514,6 @@ window.checkSym = async () => {
   const url = 'http://127.0.0.1:8000/auth/api/agent/symptoms/';
 
   try {
-    console.log("3. Fetching:", url);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1502,9 +1523,7 @@ window.checkSym = async () => {
       })
     });
 
-    console.log("4. Response status:", response.status);
     const data = await response.json();
-    console.log("5. Received data:", data);
 
     if (response.ok) {
       APP.symRes = data;
@@ -1516,7 +1535,6 @@ window.checkSym = async () => {
       };
     }
   } catch (error) {
-    console.error("Fetch crashed:", error);
     APP.symRes = {
       specialist: "Network Error",
       urgency: "medium",
@@ -1526,13 +1544,10 @@ window.checkSym = async () => {
 
   render();
 };
-window.connectDigiLocker = () => {
-  const clientId = 'arogya_test_client';
-  const redirectUri = 'http://127.0.0.1:8000/auth/api/digilocker/callback/';
-  
-  const url = `http://127.0.0.1:8000/auth/mock-api/public/oauth2/1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=123`;
-  
-  window.location.href = url;
+window.connectDigiLocker = async () => {
+  const response = await fetch('/auth/api/digilocker/authorize/');
+  const data = await response.json();
+  if (response.ok && data.authorization_url) window.location.href = data.authorization_url;
 };
 
 window.checkMed = async () => {
@@ -1578,7 +1593,6 @@ window.checkMed = async () => {
       APP.medRes = null;
     }
   } catch (error) {
-    console.error("Medicine fetch crashed:", error);
     showToast("Network error while searching for medicines.");
     APP.medRes = null;
   }
@@ -1623,7 +1637,6 @@ window.generateAISummary = async () => {
       APP.aiError = data.error || "Server returned an error.";
     }
   } catch (error) {
-    console.error("Fetch crashed:", error);
     APP.aiError = "Network error. Could not reach AI server.";
   }
 
@@ -1641,7 +1654,6 @@ window.sendOTP = async () => {
   
   // Create the full number variable
   const fullPhoneNumber = '+91' + APP.loginPhone;
-  localStorage.removeItem('arogya_manual_logout');
   
   try {
     const response = await fetch('http://127.0.0.1:8000/auth/api/send-otp/', {
@@ -1702,11 +1714,6 @@ window.verifyOTP = async () => {
         const data = await res.json();
         
         if (res.ok) {
-            // Save the tokens in the browser's local storage
-            localStorage.setItem('arogya_access', data.access_token);
-            localStorage.setItem('arogya_refresh', data.refresh_token);
-            localStorage.setItem('arogya_user_phone', data.phone);
-            localStorage.setItem('arogya_session_started', String(Date.now()));
             localStorage.setItem('arogya_profile', JSON.stringify(data.profile || {}));
             
             APP.profileDetails = data.profile || null;
@@ -1731,33 +1738,18 @@ window.verifyOTP = async () => {
     }
 };
 
-window.checkExistingSession = () => {
-    const accessToken = localStorage.getItem('arogya_access');
-    const userPhone = localStorage.getItem('arogya_user_phone');
-  const sessionStarted = Number(localStorage.getItem('arogya_session_started'));
-  const manuallyLoggedOut = localStorage.getItem('arogya_manual_logout') === 'true';
-  const storedProfile = localStorage.getItem('arogya_profile');
-  const sessionIsValid = sessionStarted > 0 && Date.now() - sessionStarted < 60 * 60 * 1000;
-    
-  if (accessToken && userPhone && storedProfile && sessionIsValid && !manuallyLoggedOut) {
-    console.log("Active session found for", userPhone);
-    APP.loginPhone = userPhone.replace(/^\+91/, '');
-    try {
-      applyProfileDetails(JSON.parse(storedProfile), false);
-    } catch (error) {
-      clearStoredSession();
-    }
-    } else {
+window.checkExistingSession = async () => {
+  try {
+    const response = await fetch('/auth/api/onboarding/profile/');
+    if (response.ok) applyProfileDetails((await response.json()).profile, false);
+    else clearStoredSession();
+  } catch (error) {
     clearStoredSession();
-    }
+  }
   if (!APP.loggedIn) render();
 };
 
 function clearStoredSession() {
-  localStorage.removeItem('arogya_access');
-  localStorage.removeItem('arogya_refresh');
-  localStorage.removeItem('arogya_user_phone');
-  localStorage.removeItem('arogya_session_started');
   localStorage.removeItem('arogya_profile');
   APP.loggedIn = false;
   APP.tab = 'home';
@@ -1768,7 +1760,6 @@ function clearStoredSession() {
 checkExistingSession(); 
 
 window.logoutUser = () => {
-  localStorage.setItem('arogya_manual_logout', 'true');
   clearStoredSession();
   showToast("Logged out successfully");
   render();
@@ -1788,7 +1779,6 @@ function applyProfileDetails(profile, showWelcome = true) {
   APP.onboardingLoading = false;
   APP.onboardingError = '';
   localStorage.setItem('arogya_profile', JSON.stringify(profile));
-  localStorage.setItem('arogya_session_started', localStorage.getItem('arogya_session_started') || String(Date.now()));
   render();
   if (showWelcome) showToast('Welcome to Arogya, ' + APP.loginName + '!');
 }
@@ -1799,7 +1789,6 @@ window.uploadABHA = async file => {
   APP.onboardingError = '';
   render();
   const body = new FormData();
-  body.append('phone', '+91' + APP.loginPhone);
   body.append('file', file);
   try {
     const response = await fetch('/auth/api/onboarding/upload-abha/', {method: 'POST', body});
@@ -1820,7 +1809,7 @@ window.linkDigiLocker = async () => {
   try {
     const response = await fetch('/auth/api/onboarding/link-digilocker/', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({phone: '+91' + APP.loginPhone})
+      body: JSON.stringify({})
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Unable to link DigiLocker');
@@ -1833,31 +1822,7 @@ window.linkDigiLocker = async () => {
 };
 
 window.completeProfile=()=>{applyProfileDetails({name:APP.loginName,age:APP.loginAge,blood_group:APP.loginBlood});}
-window.doLogout=()=>{localStorage.setItem('arogya_manual_logout','true');clearStoredSession();APP.loginPhone="";APP.loginOtp="";APP.vaultOpen=false;APP.vaultPin="";APP.vaultPinVal=["","","",""];APP.aiSummary=null;APP.aiError=null;APP.screen=null;render();}
+window.doLogout=async()=>{await fetch('/auth/api/auth/logout/', {method:'POST'});clearStoredSession();APP.loginPhone="";APP.loginOtp="";APP.vaultOpen=false;APP.vaultPin="";APP.vaultPinVal=["","","",""];APP.aiSummary=null;APP.aiError=null;APP.screen=null;render();}
 window.showToast=msg=>{let t=document.getElementById('_toast');if(!t){t=document.createElement('div');t.id='_toast';document.body.appendChild(t);}t.style.cssText=`position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:${isDark()?'#0d3326':'#d0f0e0'};color:${C().primary};padding:12px 20px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;border:1px solid ${C().primary}44;max-width:340px;text-align:center;opacity:1;transition:opacity .3s;pointer-events:none`;t.textContent=msg;clearTimeout(t._t);t._t=setTimeout(()=>{t.style.opacity='0';},3500);}
-
-// --- URL TOKEN CATCHER ---
-// Run this check immediately when the script loads
-const urlParams = new URLSearchParams(window.location.search);
-const dlToken = urlParams.get('dl_token');
-
-if (dlToken) {
-  console.log("Caught DigiLocker Token!", dlToken);
-  
-  // 1. Bypass the login screen since they just returned from Auth
-  APP.loggedIn = true;
-  APP.loginName = APP.loginName || "User";
-  
-  // 2. Open the Vault immediately
-  APP.tab = "vault";
-  APP.vaultOpen = true;
-  APP.vaultLoading = true;
-  
-  // 3. Clean the token out of the URL address bar for security
-  window.history.replaceState({}, document.title, window.location.pathname);
-  
-  // 4. Trigger the fetch to get the PDFs
-  syncDigiLockerFiles(dlToken);
-}
 
 render();

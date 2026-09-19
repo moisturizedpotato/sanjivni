@@ -4,10 +4,11 @@ html,body{height:100%;overflow-x:hidden}
 body{display:flex;justify-content:center;min-height:100vh;transition:background .3s;font-family:'DM Sans','Segoe UI',sans-serif}
 body.dark{background:#060d0a}
 body.light{background:#e8f5ee}
+
 .app-shell{width:100%;max-width:430px;min-height:100dvh;position:relative;overflow-x:clip;overflow-y:visible;background:#060d0a;color:#dff2ea}
 body.light .app-shell{background:#f0faf5;color:#0a2010}
 .app-screen{width:100%;min-height:100vh;max-width:430px;margin:0 auto;position:relative;color:inherit}
-.login-screen{width:100%;min-height:100dvh;flex:1;overflow:visible}
+
 ::-webkit-scrollbar{width:2px}
 ::-webkit-scrollbar-thumb{border-radius:10px}
 body.dark ::-webkit-scrollbar-thumb{background:#1e3228}
@@ -15,30 +16,51 @@ body.light ::-webkit-scrollbar-thumb{background:#a0c8b0}
 input[type="text"],input[type="email"],input[type="tel"],input[type="password"],textarea{font-family:'DM Sans','Segoe UI',sans-serif;appearance:none;-webkit-appearance:none;}
 input::placeholder,textarea::placeholder{color:#3a5a4a}
 textarea{resize:none}
+
 .pin-box{width:58px;height:68px;border-radius:16px;background:transparent;border:2px solid #1e3228;text-align:center;font-size:28px;font-weight:900;outline:none;font-family:'Syne',sans-serif;color:#00c87a !important;caret-color:#00c87a;-webkit-text-fill-color:#00c87a;transition:border-color .2s;}
 .pin-box:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #a78bfa22}
 .pin-box.filled{border-color:#a78bfa}
 .pin-box.err{border-color:#e05c5c !important;-webkit-text-fill-color:#e05c5c;color:#e05c5c !important}
 .otp-box{width:48px;height:56px;border-radius:14px;background:#162920;border:2px solid #1e3228;text-align:center;font-size:22px;font-weight:900;outline:none;font-family:'Syne',sans-serif;color:#00c87a !important;-webkit-text-fill-color:#00c87a;caret-color:#00c87a;transition:border .2s;}
 .otp-box:focus{border-color:#00c87a;box-shadow:0 0 0 3px #00c87a22}
+
 @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes emergPulse{0%,100%{box-shadow:0 0 0 0 #e05c5c55}50%{box-shadow:0 0 0 14px #e05c5c00}}
 @keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
 @keyframes bounceIn{0%{transform:scale(0.3);opacity:0}60%{transform:scale(1.1)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
-@keyframes rippleMap{0%{r:8;opacity:0.8}100%{r:22;opacity:0}}
+
 .ai{animation:fadeUp .38s cubic-bezier(.16,1,.3,1) both}
 .spin{animation:spin 1s linear infinite}
 .live{animation:pulse 1.6s infinite}
 .epulse{animation:emergPulse 1s infinite}
 .bounce{animation:bounceIn .5s cubic-bezier(.16,1,.3,1) both}
-/* Sidebar overlay */
-.sidebar-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#00000066;z-index:200;opacity:0;animation:fadeUp .2s forwards}
-.sidebar-panel{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:201;animation:slideRight .28s cubic-bezier(.16,1,.3,1) forwards}
-@keyframes slideRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
 
-@media (max-width:430px) and (max-height:720px){
-	.login-screen{justify-content:flex-start!important;padding-top:20px!important;padding-bottom:20px!important}
-	.login-screen > .bounce{margin-bottom:20px!important}
-}
+/* SANJEEVNI AUTH CLASSES */
+.sj-auth{min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:28px 20px;background:#fff;position:relative;overflow:hidden;color:#173a2b}
+.sj-auth::before{content:"";position:absolute;width:320px;height:320px;border-radius:50%;right:-190px;top:-180px;border:1px solid #176b4d18;background:#176b4d08}
+.sj-auth::after{content:"";position:absolute;width:280px;height:280px;border-radius:50%;left:-180px;bottom:-160px;border:1px solid #b28a3c16;background:#b28a3c08}
+.sj-auth-wrap{width:100%;max-width:390px;position:relative;z-index:1}
+.sj-auth-brand{text-align:center;margin-bottom:22px}
+.sj-auth-brand img{width:min(285px,82vw);max-height:210px;object-fit:contain;display:block;margin:0 auto 10px}
+.sj-auth-tag{font-size:10px;letter-spacing:3px;font-weight:800;color:#b28a3c}
+.sj-auth-card{background:#fff;border:1px solid #d8e1dc;border-radius:22px;padding:28px;box-shadow:0 18px 55px #173a2b14}
+.sj-auth-title{font-size:24px;font-weight:800;letter-spacing:-.4px;color:#173a2b;margin-bottom:7px}
+.sj-auth-sub{font-size:13px;line-height:1.55;color:#66736c;margin-bottom:22px}
+.sj-auth-btn{width:100%;border-radius:13px;padding:14px 18px;font:700 14px 'DM Sans','Segoe UI',sans-serif;cursor:pointer}
+.sj-auth-primary{background:#176b4d;color:#fff;border:1px solid #176b4d}
+.sj-auth-secondary{margin-top:10px;background:#fff;color:#176b4d;border:1px solid #b9d0c5}
+.sj-auth-back{background:none;border:0;color:#176b4d;font:700 13px 'DM Sans','Segoe UI',sans-serif;padding:0 0 18px;cursor:pointer}
+.sj-auth-label{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;font-weight:800;color:#66736c;margin-bottom:8px}
+.sj-auth-input{width:100%;height:48px;border:1px solid #d4e1da;border-radius:11px;background:#f8faf9;padding:0 14px;color:#173a2b;outline:none;font:600 14px 'DM Sans','Segoe UI',sans-serif;margin-bottom:14px}
+.sj-otp-row{display:flex;gap:7px;justify-content:center;margin:5px 0 14px}
+.sj-otp-row .otp-box{width:43px;height:52px;background:#f8faf9;border:1px solid #d4e1da;border-radius:11px;color:#176b4d!important;-webkit-text-fill-color:#176b4d;font:800 20px 'DM Sans','Segoe UI',sans-serif}
+.sj-abha-upload,.sj-abha-digi{width:100%;border-radius:14px;padding:15px 16px;font:700 14px 'DM Sans','Segoe UI',sans-serif;cursor:pointer;margin-top:12px}
+.sj-abha-upload{background:#0e3b2b;color:#0acb83;border:1px solid #0acb8355}
+.sj-abha-digi{background:#fff;color:#176b4d;border:1px solid #4d9de0}
+.sj-abha-note{text-align:center;color:#66736c;font-size:11px;line-height:1.55;margin:17px 4px}
+.sj-skip{width:100%;background:none;border:0;color:#66736c;font:700 12px 'DM Sans','Segoe UI',sans-serif;padding:8px;cursor:pointer}
+.sj-logo-small{width:130px;height:auto;display:block;margin:0 0 18px}
+.sj-trust{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:15px;border-top:1px solid #e5ece8}
+.sj-trust span{font-size:10px;color:#66736c;background:#f4f8f5;border-radius:8px;padding:6px 9px;font-weight:700}

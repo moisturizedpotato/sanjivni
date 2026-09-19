@@ -11,6 +11,12 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
+import os
+import secrets
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,13 +25,33 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ll*obnuhhyg$ga&8x_wssw=t-t19%j^5t=mpf2r^@n^mi&e#!8'
+def env_bool(name, default=False):
+    return os.getenv(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+DEBUG = env_bool('DJANGO_DEBUG', True)
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-local-development-key-change-me'
+    else:
+        raise RuntimeError('DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false')
+
+def env_list(name, default):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
+ALLOWED_HOSTS = env_list(
+    'DJANGO_ALLOWED_HOSTS',
+    'localhost,127.0.0.1,testserver' if DEBUG else ''
+)
+if not DEBUG and not ALLOWED_HOSTS:
+    raise RuntimeError('DJANGO_ALLOWED_HOSTS must be set when DJANGO_DEBUG is false')
+
+CSRF_TRUSTED_ORIGINS = env_list(
+    'DJANGO_CSRF_TRUSTED_ORIGINS',
+    'http://localhost:8000,http://127.0.0.1:8000,http://testserver'
+)
 
 
 # Application definition
@@ -45,7 +71,7 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'otp_login.authentication.CookieJWTAuthentication',
     )
 }
 
@@ -55,6 +81,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1), # Locks access after 1 hour
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7), # Used to request a new access token quietly
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 MIDDLEWARE = [
@@ -85,7 +113,7 @@ TEMPLATES = [
     },
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS', 'http://127.0.0.1:8000,http://localhost:8000')
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
@@ -135,19 +163,52 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'otp_login' / 'static',
+]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
-        "OPTIONS": {
-            "host": "smtp.gmail.com",
-            "use_tls": True,  # Automatically uses port 587
-            "username": "ritesh.mishra15jul@gmail.com",
-            "password": "ufjjbisyowfywodn",
-        },
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+
+DIGILOCKER_CLIENT_ID = os.getenv('DIGILOCKER_CLIENT_ID', 'local-mock-client')
+DIGILOCKER_CLIENT_SECRET = os.getenv('DIGILOCKER_CLIENT_SECRET', '')
+DIGILOCKER_REDIRECT_URI = os.getenv(
+    'DIGILOCKER_REDIRECT_URI', 'http://127.0.0.1:8000/auth/api/digilocker/callback/'
+)
+ENABLE_MOCK_DIGILOCKER = env_bool('ENABLE_MOCK_DIGILOCKER', DEBUG)
+
+if not DEBUG:
+    required_production = {
+        'EMAIL_HOST': EMAIL_HOST,
+        'EMAIL_HOST_USER': EMAIL_HOST_USER,
+        'EMAIL_HOST_PASSWORD': EMAIL_HOST_PASSWORD,
+        'DIGILOCKER_CLIENT_ID': os.getenv('DIGILOCKER_CLIENT_ID'),
+        'DIGILOCKER_CLIENT_SECRET': DIGILOCKER_CLIENT_SECRET,
+        'DIGILOCKER_REDIRECT_URI': os.getenv('DIGILOCKER_REDIRECT_URI'),
+        'DJANGO_CORS_ALLOWED_ORIGINS': os.getenv('DJANGO_CORS_ALLOWED_ORIGINS'),
     }
-}
+    missing = [name for name, value in required_production.items() if not value]
+    if missing:
+        raise RuntimeError('Missing required production settings: ' + ', '.join(missing))
+
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = False
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '3600' if not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'

@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+myenv/
+.env
+*.sqlite3
+media/
+staticfiles/
+.vercel/
+.history_machine/
+*.zip
+*.exe
+

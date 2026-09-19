@@ -1,0 +1,71 @@
+{
+  "extraction_status": "complete",
+  "extraction_error_code": "",
+  "image_quality": "clear",
+  "reupload_required": false,
+  "reupload_reason": "",
+  "facility_name": "The White Tusk",
+  "doctor_name": "Dr. Sachin Sangwan",
+  "prescription_date": "12/10/22",
+  "patient_name": "",
+  "diagnosis": "",
+  "medicines": [
+    {
+      "medicine_name": "Augmentin",
+      "dosage": "625 mg",
+      "frequency": "1-0-1",
+      "duration": "5 days",
+      "instructions": "After meals",
+      "confidence": {
+        "medicine_name": 0.96,
+        "dosage": 0.94,
+        "frequency": 0.91,
+        "duration": 0.90,
+        "instructions": 0.88
+      }
+    },
+    {
+      "medicine_name": "Enzoflam",
+      "dosage": "",
+      "frequency": "1-0-1",
+      "duration": "5 days",
+      "instructions": "After meals",
+      "confidence": {
+        "medicine_name": 0.95,
+        "dosage": 0.20,
+        "frequency": 0.87,
+        "duration": 0.86,
+        "instructions": 0.84
+      }
+    },
+    {
+      "medicine_name": "Pant 40 mg",
+      "dosage": "40 mg",
+      "frequency": "1-0-0",
+      "duration": "5 days",
+      "instructions": "Before meals",
+      "confidence": {
+        "medicine_name": 0.93,
+        "dosage": 0.91,
+        "frequency": 0.90,
+        "duration": 0.89,
+        "instructions": 0.86
+      }
+    },
+    {
+      "medicine_name": "Hexigel",
+      "dosage": "",
+      "frequency": "",
+      "duration": "1 week",
+      "instructions": "Gum paint and massage",
+      "confidence": {
+        "medicine_name": 0.82,
+        "dosage": 0.10,
+        "frequency": 0.10,
+        "duration": 0.78,
+        "instructions": 0.84
+      }
+    }
+  ],
+  "uncertain_fields": ["Enzoflam dosage", "Hexigel dosage", "Hexigel frequency"]
+}
