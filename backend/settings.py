@@ -181,7 +181,10 @@ STATICFILES_DIRS = [
 ]
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = (
+    Path(os.getenv('VERCEL_TMP_DIR', '/tmp')) / 'media'
+    if VERCEL_DEPLOYMENT else BASE_DIR / 'media'
+)
 
 
 # Email
