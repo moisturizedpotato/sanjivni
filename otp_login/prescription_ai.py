@@ -6,6 +6,7 @@ import os
 import re
 
 from google import genai
+from google.genai import types as genai_types
 
 
 logger = logging.getLogger('otp_login.security')
@@ -14,7 +15,7 @@ OCR_MODELS = tuple(
     model.strip()
     for model in os.getenv(
         'GOOGLE_OCR_MODELS',
-        'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash',
+        'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.8-flash',
     ).split(',')
     if model.strip()
 )
@@ -75,7 +76,11 @@ def _normalise(data):
             item = {
                 field: (
                     str(medicine.get(field, '') or '')
-                    if _confidence_value(item_confidence.get(field, 0.0)) >= CLINICAL_CONFIDENCE_THRESHOLD
+                    if _confidence_value(
+                        item_confidence.get(
+                            field, confidence.get(f'medicine_{index}_{field}', 0.0)
+                        )
+                    ) >= CLINICAL_CONFIDENCE_THRESHOLD
                     else ''
                 )
                 for field in ('medicine_name', 'dosage', 'frequency', 'duration', 'instructions')
@@ -105,7 +110,14 @@ Use confidence values from 0.0 to 1.0. A value below 0.25 means the field is unc
 Do not invent unreadable values. Use empty strings for unreadable fields. Put uncertainty in unclear_text.
 Detect cropped, clipped, blurry, dark, or unreadable areas. If crucial medicine, dose, date, or advice text is not visible, set reupload_required true and explain why in reupload_reason.
 Do not use Markdown code fences. Do not include explanatory text before or after JSON.'''
-        client = genai.Client(api_key=api_key, http_options={'timeout': 120000})
+        timeout_ms = int(os.getenv('GOOGLE_OCR_TIMEOUT_MS', '15000'))
+        client = genai.Client(
+            api_key=api_key,
+            http_options=genai_types.HttpOptions(
+                timeout=timeout_ms,
+                retry_options=genai_types.HttpRetryOptions(attempts=1),
+            ),
+        )
         attempts = []
         request_input = [
             {'type': 'text', 'text': prompt},
