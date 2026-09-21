@@ -170,7 +170,14 @@ Do not invent values. Mention conflicts or unreadable fields as anomalies.
     api_key = os.getenv('GOOGLE_API_KEY')
     if not api_key:
         return {'summary': '', 'anomalies': ['AI summary unavailable: missing API key'], 'confidence_notes': {}}
-    client = genai.Client(api_key=api_key)
+    timeout_ms = int(os.getenv('GOOGLE_SUMMARY_TIMEOUT_MS', '3000'))
+    client = genai.Client(
+        api_key=api_key,
+        http_options=genai_types.HttpOptions(
+            timeout=timeout_ms,
+            retry_options=genai_types.HttpRetryOptions(attempts=1),
+        ),
+    )
     for model in OCR_MODELS:
         try:
             response = client.interactions.create(

@@ -326,7 +326,7 @@ def _build_intake_summary(session):
     testimony = {key: getattr(session, key) for key, _, _ in INTAKE_QUESTIONS}
     language = str((session.merged_record or {}).get('language', 'English'))
     ai_summary = {'summary': '', 'anomalies': [], 'confidence_notes': {}}
-    if os.getenv('ENABLE_GEMINI_SUMMARY', 'true').lower() == 'true':
+    if os.getenv('ENABLE_GEMINI_SUMMARY', 'false').lower() == 'true':
         from .prescription_ai import generate_prescription_summary
         ai_summary = generate_prescription_summary(
             {'doctor_name': extraction.get('doctor_name', ''),
