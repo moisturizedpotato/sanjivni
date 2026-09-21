@@ -9,7 +9,7 @@ from .models import (
 )
 from .mock_ors import get_mock_bed_availability, list_mock_ors_hospitals, submit_mock_bed_request
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from django.http import HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.conf import settings
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
@@ -18,6 +18,7 @@ from django.shortcuts import render
 from .utils import generate_and_send_sms_otp # Your Twilio utility function
 from .agent import format_agent_response, generate_health_summary
 import logging
+import mimetypes
 import secrets
 from urllib.parse import urlencode
 import os
@@ -30,6 +31,8 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from fastmcp import Client
 from django.db import IntegrityError
+from django.core.exceptions import SuspiciousFileOperation
+from django.utils._os import safe_join
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -38,6 +41,17 @@ from .utils import verify_otp
 from .authentication import CookieJWTAuthentication
 
 logger = logging.getLogger('otp_login.security')
+
+
+def static_asset(request, path):
+    try:
+        file_path = safe_join(settings.BASE_DIR / 'otp_login' / 'static', path)
+    except SuspiciousFileOperation:
+        raise Http404
+    if not os.path.isfile(file_path):
+        raise Http404
+    content_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+    return FileResponse(open(file_path, 'rb'), content_type=content_type)
 
 ACCESS_COOKIE = 'access_token'
 REFRESH_COOKIE = 'refresh_token'

@@ -18,9 +18,11 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from otp_login.views import static_asset
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('static/<path:path>', static_asset, name='static_asset'),
     path('auth/', include('otp_login.urls')),
 ]
 
