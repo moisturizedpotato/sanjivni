@@ -16,6 +16,10 @@ urlpatterns = [
     path('', views.arogya_frontend, name='frontend'),
     path('api/agent/symptoms/', views.SymptomCheckerAPI.as_view(), name='agent_symptoms'),
     path('api/agent/summary/', views.AISummaryAPI.as_view(), name='agent_summary'),
+    path('api/ors/hospitals/', views.ORSHospitalsAPI.as_view(), name='ors_hospitals'),
+    path('api/ors/hospitals/<str:hospital_id>/availability/', views.ORSHospitalAvailabilityAPI.as_view(), name='ors_availability'),
+    path('api/ors/bed-requests/', views.ORSBedRequestsAPI.as_view(), name='ors_bed_requests'),
+    path('api/ors/bed-requests/<int:request_id>/cancel/', views.ORSBedRequestCancelAPI.as_view(), name='ors_bed_request_cancel'),
     
     path('mock-api/public/oauth2/1/authorize', mock_digilocker.MockAuthorizeAPI.as_view()),
     path('mock-api/public/oauth2/1/token', mock_digilocker.MockTokenAPI.as_view()),

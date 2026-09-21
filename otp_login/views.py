@@ -5,8 +5,9 @@ from rest_framework import status
 from django.contrib.auth.models import User
 from .models import (
     UserProfile, OTP, DigiLockerDocument, PrescriptionDraft, PrescriptionMedicine,
-    ClinicalIntakeSession,
+    ClinicalIntakeSession, ORSBedRequest,
 )
+from .mock_ors import get_mock_bed_availability, list_mock_ors_hospitals, submit_mock_bed_request
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.http import HttpResponseRedirect
 from django.conf import settings
@@ -1020,6 +1021,126 @@ class SymptomCheckerAPI(APIView):
                 "advice": "The AI service is temporarily unavailable. Please consult a General Physician for an in-person evaluation.",
                 "degraded": True,
             }, status=status.HTTP_200_OK)
+
+
+class ORSHospitalsAPI(APIView):
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsOwnerOrClinicalStaff]
+
+    def get(self, request):
+        return Response({'hospitals': list_mock_ors_hospitals()}, status=status.HTTP_200_OK)
+
+
+class ORSHospitalAvailabilityAPI(APIView):
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsOwnerOrClinicalStaff]
+
+    def get(self, request, hospital_id):
+        availability = get_mock_bed_availability(hospital_id)
+        if availability is None:
+            return Response({'error': 'Hospital not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'hospital_id': hospital_id, 'availability': availability}, status=status.HTTP_200_OK)
+
+
+def _ors_request_payload(bed_request):
+    return {
+        'id': bed_request.pk,
+        'ors_reference': bed_request.ors_reference,
+        'status': bed_request.status,
+        'hospital_name': bed_request.hospital_name,
+        'hospital_location': bed_request.hospital_location,
+        'department': bed_request.department,
+        'bed_type': bed_request.bed_type,
+        'admission_reason': bed_request.admission_reason,
+        'preferred_admission_date': bed_request.preferred_admission_date,
+        'estimated_wait': bed_request.estimated_wait,
+        'assigned_bed_label': bed_request.assigned_bed_label,
+        'created_at': bed_request.created_at,
+    }
+
+
+class ORSBedRequestsAPI(APIView):
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsOwnerOrClinicalStaff]
+
+    def get(self, request):
+        profile = _target_profile(request)
+        if not profile or not can_access_patient_record(request.user, profile):
+            return Response({'error': 'Patient profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'requests': [_ors_request_payload(item) for item in profile.ors_bed_requests.order_by('-created_at')]}, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        profile = _target_profile(request)
+        phone = str(request.data.get('phone', '')).strip()
+        if phone:
+            profile = _find_profile_by_phone(phone)
+        if not profile or not can_access_patient_record(request.user, profile):
+            return Response({'error': 'Patient profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        hospital_id = str(request.data.get('hospital_id', '')).strip()
+        bed_type = str(request.data.get('bed_type', '')).strip()
+        result = submit_mock_bed_request(hospital_id, bed_type)
+        if result is None:
+            return Response({'error': 'Choose a valid demo hospital and bed type'}, status=status.HTTP_400_BAD_REQUEST)
+        preferred_date = request.data.get('preferred_admission_date') or None
+        try:
+            from datetime import date
+            parsed_date = date.fromisoformat(preferred_date) if preferred_date else None
+        except (TypeError, ValueError):
+            return Response({'error': 'Preferred admission date must be YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+
+        hospital = result['hospital']
+        bed_request = ORSBedRequest.objects.create(
+            patient=profile,
+            hospital_name=hospital['name'],
+            hospital_location=hospital['location'],
+            department=str(request.data.get('department', '')).strip(),
+            bed_type=bed_type,
+            admission_reason=str(request.data.get('admission_reason', '')).strip(),
+            preferred_admission_date=parsed_date,
+            status=result['status'],
+            ors_reference=result['ors_reference'] + f'-{uuid.uuid4().hex[:4].upper()}',
+            estimated_wait=result['estimated_wait'],
+            assigned_bed_label=result['assigned_bed_label'],
+        )
+        DigiLockerDocument.objects.create(
+            user_identifier=profile.phone_number,
+            uri=f'ors-demo-{uuid.uuid4().hex}',
+            title='ORS Demo Bed Request',
+            doc_type='Admission Request',
+            issuer='ORS Demo Gateway',
+            date=timezone.now().strftime('%d-%b-%Y'),
+            note=(
+                f'Hospital: {bed_request.hospital_name}\n'
+                f'Bed type: {bed_request.bed_type}\n'
+                f'Status: {bed_request.get_status_display()}\n'
+                f'Reference: {bed_request.ors_reference}\n'
+                f'Admission reason: {bed_request.admission_reason}\n'
+                f'Optional notes: {str(request.data.get("notes", "")).strip()}'
+            ),
+        )
+        return Response({
+            'success': True,
+            'request': _ors_request_payload(bed_request),
+            'message': 'ORS demo bed request submitted. Final admission confirmation is subject to hospital verification.',
+        }, status=status.HTTP_201_CREATED)
+
+
+class ORSBedRequestCancelAPI(APIView):
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsOwnerOrClinicalStaff]
+
+    def post(self, request, request_id):
+        profile = _target_profile(request)
+        if not profile or not can_access_patient_record(request.user, profile):
+            return Response({'error': 'Patient profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            bed_request = ORSBedRequest.objects.get(pk=request_id, patient=profile)
+        except ORSBedRequest.DoesNotExist:
+            return Response({'error': 'Bed request not found'}, status=status.HTTP_404_NOT_FOUND)
+        bed_request.status = 'CANCELLED'
+        bed_request.save(update_fields=['status', 'updated_at'])
+        return Response({'success': True, 'request': _ors_request_payload(bed_request)}, status=status.HTTP_200_OK)
         
 class SendOTPAPI(APIView):
     authentication_classes = []

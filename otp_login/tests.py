@@ -16,7 +16,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     ClinicalPatientAssignment, ClinicalIntakeSession, DigiLockerDocument, OTP, OAuthState,
-    PrescriptionDraft, PrescriptionMedicine, UserProfile,
+    ORSBedRequest, PrescriptionDraft, PrescriptionMedicine, UserProfile,
 )
 from .prescription_ai import OCR_MODELS, extract_prescription_from_image
 from .utils import generate_and_send_sms_otp, verify_otp
@@ -116,6 +116,55 @@ class SecurityAPITests(TestCase):
         self.assertIn('access_token', response.cookies)
         self.assertTrue(response.cookies['access_token']['httponly'])
         self.assertFalse(OTP.objects.filter(user=self.patient).exists())
+
+    def test_ors_hospital_list_and_availability_endpoints(self):
+        self._cookie_login(self.patient)
+        hospitals = self.client.get('/auth/api/ors/hospitals/')
+        availability = self.client.get('/auth/api/ors/hospitals/aiims-delhi/availability/')
+        self.assertEqual(hospitals.status_code, 200)
+        self.assertEqual(hospitals.data['hospitals'][0]['id'], 'aiims-delhi')
+        self.assertEqual(availability.status_code, 200)
+        self.assertEqual(availability.data['availability'][0]['bed_type'], 'General Ward')
+
+    def test_ors_general_ward_request_creates_confirmed_request_and_vault_document(self):
+        self._cookie_login(self.patient)
+        response = self.client.post('/auth/api/ors/bed-requests/', {
+            'phone': self.patient_profile.phone_number,
+            'hospital_id': 'aiims-delhi',
+            'department': 'General Medicine',
+            'bed_type': 'General Ward',
+            'admission_reason': 'High fever and dehydration',
+            'preferred_admission_date': '2026-09-21',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data['request']['ors_reference'].startswith('ORS-DEMO-'))
+        self.assertEqual(response.data['request']['status'], 'CONFIRMED')
+        self.assertTrue(ORSBedRequest.objects.filter(patient=self.patient_profile).exists())
+        self.assertTrue(DigiLockerDocument.objects.filter(doc_type='Admission Request').exists())
+
+    def test_ors_unavailable_icu_request_is_waitlisted(self):
+        self._cookie_login(self.patient)
+        response = self.client.post('/auth/api/ors/bed-requests/', {
+            'hospital_id': 'aiims-delhi', 'department': 'Emergency', 'bed_type': 'ICU',
+            'admission_reason': 'Breathing difficulty',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['request']['status'], 'WAITLISTED')
+        self.assertEqual(response.data['request']['assigned_bed_label'], '')
+        self.assertIn('Estimated wait', response.data['request']['estimated_wait'])
+
+    def test_ors_request_list_and_cancellation(self):
+        self._cookie_login(self.patient)
+        created = self.client.post('/auth/api/ors/bed-requests/', {
+            'hospital_id': 'aiims-delhi', 'bed_type': 'General Ward',
+        }, format='json')
+        request_id = created.data['request']['id']
+        listed = self.client.get('/auth/api/ors/bed-requests/')
+        cancelled = self.client.post(f'/auth/api/ors/bed-requests/{request_id}/cancel/')
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.data['requests'][0]['id'], request_id)
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.data['request']['status'], 'CANCELLED')
 
     def test_cookie_authenticated_request_and_csrf_protection(self):
         client = APIClient(enforce_csrf_checks=True)
@@ -363,8 +412,8 @@ class SecurityAPITests(TestCase):
                 image_file.write(b'png-test-data')
             with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}):
                 with patch('otp_login.prescription_ai.genai.Client') as client_class:
-                    client_class.return_value.interactions.create.return_value = SimpleNamespace(
-                            output_text=output_text
+                    client_class.return_value.models.generate_content.return_value = SimpleNamespace(
+                        text=output_text
                     )
                     result = extract_prescription_from_image(image_path)
             return result, client_class
@@ -375,12 +424,11 @@ class SecurityAPITests(TestCase):
         result, client_class = self._run_extraction_with_response(
             '{"doctor_name":"Dr Test","medicines":[]}'
         )
-        request = client_class.return_value.interactions.create.call_args.kwargs
-        image_input = request['input'][1]
+        request = client_class.return_value.models.generate_content.call_args.kwargs
+        image_input = request['contents'][1]
         self.assertEqual(request['model'], OCR_MODELS[0])
-        self.assertEqual(image_input['type'], 'image')
-        self.assertTrue(image_input['data'])
-        self.assertEqual(image_input['mime_type'], 'image/png')
+        self.assertTrue(image_input.inline_data.data)
+        self.assertEqual(image_input.inline_data.mime_type, 'image/png')
         self.assertFalse(result['fallback_result'])
 
     def test_gemini_ocr_tries_models_in_order(self):
@@ -390,10 +438,10 @@ class SecurityAPITests(TestCase):
                 image_file.write(b'jpg-test-data')
             with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}):
                 with patch('otp_login.prescription_ai.genai.Client') as client_class:
-                    create = client_class.return_value.interactions.create
+                    create = client_class.return_value.models.generate_content
                     create.side_effect = [
                         *[RuntimeError('limit') for _ in OCR_MODELS[:-1]],
-                        SimpleNamespace(output_text='{"medicines":[]}'),
+                        SimpleNamespace(text='{"medicines":[]}'),
                     ]
                     result = extract_prescription_from_image(image_path)
                     models = [call.kwargs['model'] for call in create.call_args_list]

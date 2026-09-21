@@ -133,3 +133,26 @@ class ClinicalIntakeSession(models.Model):
     hip_reference = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class ORSBedRequest(models.Model):
+    STATUS_CHOICES = [
+        ('SUBMITTED', 'Request Submitted'),
+        ('CONFIRMED', 'Bed Confirmed'),
+        ('WAITLISTED', 'Waitlisted'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
+    patient = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='ors_bed_requests')
+    hospital_name = models.CharField(max_length=200)
+    hospital_location = models.CharField(max_length=200, blank=True, default='')
+    department = models.CharField(max_length=150, blank=True, default='')
+    bed_type = models.CharField(max_length=100)
+    admission_reason = models.TextField(blank=True, default='')
+    preferred_admission_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='SUBMITTED')
+    ors_reference = models.CharField(max_length=100, unique=True)
+    estimated_wait = models.CharField(max_length=100, blank=True, default='')
+    assigned_bed_label = models.CharField(max_length=100, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

@@ -15,7 +15,7 @@ OCR_MODELS = tuple(
     model.strip()
     for model in os.getenv(
         'GOOGLE_OCR_MODELS',
-        'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.8-flash',
+        'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash',
     ).split(',')
     if model.strip()
 )
@@ -125,8 +125,14 @@ Do not use Markdown code fences. Do not include explanatory text before or after
         ]
         for model in OCR_MODELS:
             try:
-                response = client.interactions.create(model=model, input=request_input)
-                raw_text = response.output_text
+                response = client.models.generate_content(
+                    model=model,
+                    contents=[
+                        prompt,
+                        genai_types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type=mime_type),
+                    ],
+                )
+                raw_text = response.text or ''
                 cleaned = re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$', '', raw_text.strip(), flags=re.IGNORECASE)
                 object_match = re.search(r'\{.*\}', cleaned, flags=re.DOTALL)
                 if not object_match:

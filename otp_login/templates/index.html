@@ -285,6 +285,7 @@ const APP={
   qTimer:0,qInterval:null,
   emergCondition:null,
   mapDoc:null,mapMode:"clinics",
+  ors:{step:1,hospitals:[],availability:[],hospital:null,bedType:'',department:'',reason:'',date:'',notes:'',request:null,requests:[],loading:false},
   reminderOpen:null,
   orderModal:null,
   scanMode:'demo',
@@ -330,6 +331,15 @@ async function apiRequest(path, options={}){
   if(!response.ok)throw new Error(data.error||'Request failed');
   return data;
 }
+function reportEscape(value){
+  return String(value??'').replace(/[&<>"']/g,character=>({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[character]));
+}
 function applyProfile(profile){
   if(!profile)return;
   APP.loginName=profile.name||APP.loginName;
@@ -339,6 +349,25 @@ function applyProfile(profile){
   FAMILY[0].name=APP.loginName||FAMILY[0].name;
   FAMILY[0].age=parseInt(APP.loginAge)||FAMILY[0].age;
   FAMILY[0].blood=APP.loginBlood||FAMILY[0].blood;
+}
+async function validateCachedSession(){
+  try{
+    const response=await fetch(`${API_BASE}/onboarding/profile/`,{credentials:'include'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Authentication required');
+    applyProfile(data.profile);
+    APP.loggedIn=true;
+    render();
+  }catch(error){
+    localStorage.removeItem('sanjeevni_user');
+    APP.loggedIn=false;
+    APP.loginPhone='';
+    APP.loginName='';
+    APP.loginAge='';
+    APP.loginBlood='B+';
+    APP.screen=null;
+    render();
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -389,6 +418,7 @@ function buildView(){
   else if(APP.screen==="about")main=buildAbout();
   else if(APP.screen==="upload-record")main=buildUploadRecord();
   else if(APP.screen==="clinical-intake")main=buildClinicalIntake();
+  else if(APP.screen==="ors-bed-booking")main=buildORSBedBooking();
   else if(APP.tab==="home")main=buildHome();
   else if(APP.tab==="doctors")main=buildDoctors();
   else if(APP.tab==="ai")main=buildAIHub();
@@ -556,6 +586,9 @@ function buildHome(){
           <div style="font-weight:800;color:${C().text};font-size:13px">${it.title}</div>
           <div style="font-size:11px;color:${it.ac};margin-top:3px;font-weight:600">${it.sub}</div>
         </div>`).join('')}
+      </div>
+      <div onclick="openORSBooking()" style="background:${isDark()?'#102d27':'#e0f4ee'};border:1px solid ${C().primary}55;border-radius:18px;padding:16px;margin-bottom:18px;cursor:pointer;display:flex;align-items:center;gap:12px">
+        <div style="font-size:28px">🏥</div><div style="flex:1"><div style="font-weight:900;color:${C().text};font-size:14px">ORS Bed Booking</div><div style="color:${C().primary};font-size:12px;margin-top:3px;font-weight:700">Request a hospital bed through ORS Demo</div></div><div style="color:${C().primary};font-size:20px">›</div>
       </div>
       <div onclick="setScreen('clinical-intake');APP.intakeStage='upload';render()" style="background:linear-gradient(135deg,#102f26,#1e6048);border:1px solid #00c87a66;border-radius:18px;padding:18px;margin-bottom:18px;cursor:pointer">
         <div style="font-size:26px;margin-bottom:8px">📄</div><div style="font-weight:900;color:#fff;font-size:15px">Scan Prescription & Start AI Intake</div><div style="color:#b7f5d8;font-size:12px;margin-top:5px">Turn a handwritten prescription into a structured clinical summary</div>
@@ -733,6 +766,9 @@ function buildEmergency(){
       <button onclick="APP.mapMode='emergency';setScreen('map')" style="background:${isDark()?'#2d0f0f':'#ffd0d0'};color:#e05c5c;border:1.5px solid #e05c5c44;border-radius:14px;padding:14px;width:100%;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px">
         🗺️ View Emergency Hospitals on Live Map →
       </button>
+      <div onclick="openORSBooking()" style="background:${isDark()?'#102d27':'#e0f4ee'};border:1px solid ${C().primary}55;border-radius:16px;padding:15px;margin-bottom:18px;cursor:pointer;display:flex;align-items:center;gap:12px">
+        <div style="font-size:26px">🏥</div><div><div style="font-weight:900;color:${C().text};font-size:14px">ORS Bed Booking</div><div style="color:${C().primary};font-size:12px;margin-top:3px;font-weight:700">Request a hospital bed through ORS Demo</div></div>
+      </div>
       <div style="${S.lbl};margin-bottom:10px">Nearest Emergency Hospitals</div>
       ${EMERGENCY_HOSPITALS.map((h,i)=>`<div style="background:${i===0?isDark()?'#2d0f0f':'#ffd0d0':C().card};border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid ${i===0?'#e05c5c66':C().border}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
@@ -760,8 +796,22 @@ function buildEmergency(){
     ${nav(APP.tab)}
   </div>`;}
 
+function buildORSBedBooking(){
+  const o=APP.ors,h=o.hospital,a=o.availability||[];
+  if(o.request){const wait=o.request.status==='WAITLISTED';return `<div style="${pg()}" class="ai"><div style="${hdr()}padding:52px 20px 20px"><div onclick="setScreen(null)" style="color:${C().dim};cursor:pointer;margin-bottom:12px">← Back</div><div style="${S.h1};font-size:25px">✓ ORS Bed Request Submitted</div><div style="color:${C().primary};font-size:12px;font-weight:800;margin-top:6px">ORS Demo · Request Submitted</div></div><div style="padding:18px 18px 90px"><div style="${cs()};padding:18px;margin-bottom:14px;line-height:1.9;font-size:13px">Hospital: <strong>${reportEscape(o.request.hospital_name)}</strong><br>Bed Type: <strong>${reportEscape(o.request.bed_type)}</strong><br>Status: <strong style="color:${wait?'#b87900':C().primary}">${wait?'Waitlisted':'Demo Bed Hold Confirmed'}</strong><br>Reference: <strong>${reportEscape(o.request.ors_reference)}</strong><br>Estimated Admission: <strong>${reportEscape(o.request.estimated_wait)}</strong></div><div style="background:${isDark()?'#2a1a00':'#fff4d6'};border:1px solid #d9a44166;border-radius:14px;padding:14px;color:${isDark()?'#f5d58a':'#73591f'};font-size:12px;line-height:1.6">Bed request submitted — confirmation subject to hospital availability.<br>This is a demonstration. Please contact the hospital for actual admission and bed confirmation.</div><button onclick="APP.ors.request=null;setScreen(null)" style="${S.btn};margin-top:14px">Back to Home</button></div></div>`;}
+  const field=`width:100%;box-sizing:border-box;padding:12px;border:1px solid ${C().border};border-radius:12px;background:${C().card};color:${C().text};font-family:inherit;font-size:13px`;
+  const header=`<div style="${hdr()}padding:52px 20px 18px"><div onclick="setScreen(null)" style="color:${C().dim};cursor:pointer;margin-bottom:12px">← Back</div><div style="${S.h1};font-size:25px">🏥 ORS Bed Booking</div><div style="color:${C().primary};font-size:12px;font-weight:800;margin-top:5px">ORS Demo · No real bed is reserved</div><div style="display:flex;gap:5px;margin-top:16px">${[1,2,3,4].map(i=>`<span style="height:4px;flex:1;border-radius:4px;background:${i<=o.step?C().primary:C().border}"></span>`).join('')}</div></div>`;
+  let body='';
+  if(o.step===1)body=`<div style="${S.lbl};margin-bottom:10px">Step 1 · Select hospital</div>${o.loading?`<div style="padding:40px;text-align:center;color:${C().muted}">Loading ORS Demo hospitals...</div>`:(o.hospitals||[]).map(item=>`<div onclick="selectORSHospital('${item.id}')" style="${cs(item.id===h?.id?C().primary+'99':null)};padding:16px;margin-bottom:10px;cursor:pointer"><div style="font-weight:900;color:${C().text};font-size:14px">${reportEscape(item.name)} <span style="color:${C().primary};font-size:10px">ORS Demo</span></div><div style="color:${C().muted};font-size:12px;margin-top:4px">📍 ${reportEscape(item.location)}</div><div style="color:${C().dim};font-size:11px;margin-top:7px">${item.departments.map(reportEscape).join(' · ')}</div></div>`).join('')}`;
+  if(o.step===2)body=`<div style="${S.lbl};margin-bottom:10px">Step 2 · Choose bed</div><div style="color:${C().muted};font-size:12px;margin-bottom:12px">${reportEscape(h?.name||'')} · ORS Demo mock availability</div>${a.map(item=>{const color=item.available>3?C().primary:item.available>0?'#b87900':'#d35b5b';return `<div onclick="APP.ors.bedType='${item.bed_type}';render()" style="${cs(item.bed_type===o.bedType?color+'99':null)};padding:14px;margin-bottom:9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:${C().text};font-size:13px">${reportEscape(item.bed_type)}</div><div style="color:${C().muted};font-size:11px;margin-top:4px">${reportEscape(item.estimated_wait)}</div></div><span style="background:${color}22;color:${color};padding:5px 9px;border-radius:8px;font-size:11px;font-weight:800">${item.available>0?'Available: '+item.available:item.estimated_wait.includes('wait')?'Waitlisted':'Unavailable'}</span></div>`;}).join('')}<div style="${S.lbl};margin:16px 0 8px">Department</div><select onchange="APP.ors.department=this.value" style="${field}"><option value="">Select department</option>${(h?.departments||[]).map(item=>`<option ${item===o.department?'selected':''}>${reportEscape(item)}</option>`).join('')}</select>`;
+  if(o.step===3)body=`<div style="${S.lbl};margin-bottom:10px">Step 3 · Admission details</div><label style="${S.lbl};display:block;margin:14px 0 7px">Reason for admission / symptoms</label><textarea id="orsReason" style="${field};min-height:100px" placeholder="Describe symptoms or admission reason">${reportEscape(o.reason)}</textarea><label style="${S.lbl};display:block;margin:14px 0 7px">Preferred admission date</label><input id="orsDate" type="date" value="${o.date}" style="${field}"><label style="${S.lbl};display:block;margin:14px 0 7px">Optional notes</label><textarea id="orsNotes" style="${field};min-height:70px" placeholder="Any additional notes">${reportEscape(o.notes)}</textarea><div style="color:${C().muted};font-size:11px;margin-top:10px">Your symptom checker result or appointment summary can be edited here.</div>`;
+  if(o.step===4)body=`<div style="${S.lbl};margin-bottom:10px">Step 4 · Confirmation</div><div style="${cs()};padding:16px;line-height:1.8;font-size:13px"><strong>${reportEscape(h?.name||'')}</strong><br>${reportEscape(o.bedType)} · ${reportEscape(o.department||'Department not specified')}<br>${reportEscape(o.reason||'No admission reason entered')}</div><div style="background:${isDark()?'#2a1a00':'#fff4d6'};border:1px solid #d9a44166;border-radius:14px;padding:15px;margin-top:14px;color:${isDark()?'#f5d58a':'#73591f'};font-size:12px;line-height:1.7">This is a demonstration ORS linkage. No real hospital bed is reserved.<br>Your request will be shown as a demo status only.<br>Bed request submitted — confirmation subject to hospital availability.</div>`;
+  const action=o.step<4?`<button onclick="nextORSStep()" style="${S.btn};margin-top:16px">${o.step===3?'Review Request':'Continue'}</button>`:`<button onclick="submitORSRequest()" style="${S.btn};margin-top:16px">Submit ORS Demo Request</button>`;
+  return `<div style="${pg()}" class="ai">${header}<div style="padding:18px 18px 90px;overflow-y:auto;max-height:calc(100vh - 180px)">${body}${action}</div></div>`;
+}
+
 /* ═══════════════════════════════════════════
-   VAULT — with QR and medicine ordering
+  VAULT — with QR and medicine ordering
 ═══════════════════════════════════════════ */
 function buildVault(){
   return`<div class="ai">
@@ -1287,6 +1337,8 @@ function buildProfile(){
         <div style="text-align:right"><div style="font-family:'Syne',sans-serif;font-weight:900;font-size:22px;color:${f.score>=85?C().primary:f.score>=70?C().gold:'#e05c5c'}">${f.score}</div><div style="font-size:10px;color:${C().muted}">score</div></div>
       </div>`).join('')}
       <button style="${S.btnO};margin-bottom:14px">+ Add Family Member</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px"><div style="${S.lbl}">My Care Requests</div><button onclick="loadORSRequests()" style="${S.btnSm}">Refresh</button></div>
+      ${APP.ors.requests.length?APP.ors.requests.map(item=>`<div style="${cs()};padding:14px;margin-bottom:9px"><div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-weight:800;color:${C().text};font-size:13px">${reportEscape(item.hospital_name)}</div><div style="color:${C().muted};font-size:11px;margin-top:3px">${reportEscape(item.bed_type)} · ${reportEscape(item.ors_reference)}</div></div><span style="color:${item.status==='WAITLISTED'?'#b87900':item.status==='CANCELLED'?'#d35b5b':C().primary};font-size:10px;font-weight:800">${reportEscape(item.status)}</span></div></div>`).join(''):`<div style="${c2s()};padding:14px;color:${C().muted};font-size:12px;margin-bottom:14px">No ORS Demo care requests yet.</div>`}
       ${[["⚙️ Settings & Language","setScreen('settings')"],["🔔 Reminders","setScreen('reminders')"],["🛡️ Insurance","setScreen('insurance')"],["🔒 Privacy & Security","setScreen('privacy')"],["ℹ️ About Sanjeevni","setScreen('about')"],["🚪 Logout","doLogout()"]].map(([it,act])=>`<div onclick="${act}" style="${cs()};padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer"><span style="color:${it.includes('Logout')?'#e05c5c':C().dim};font-size:14px">${it}</span><span style="color:${C().muted}">›</span></div>`).join('')}
     </div>
     ${nav('profile')}
@@ -1579,8 +1631,13 @@ window.submitIntakeAnswer=async(key,answer)=>{answer=normaliseVoiceAnswer(answer
 window.confirmIntakePreview=async()=>{APP.intakeListening=false;const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),40000);try{APP.intakeData=await apiRequest('/intake/'+APP.intakeDraftId+'/summary/?ai=1',{signal:controller.signal});APP.intakeStage='summary';render();}catch(error){showToast(error.name==='AbortError'?'Summary generation timed out. A clinical report will be shown without AI commentary.':(error.message||'Unable to generate report'));if(error.name==='AbortError'){APP.intakeStage='summary';render();}}finally{clearTimeout(timeout);}};
 window.startConfirmationVoice=()=>{if(APP.intakeStage!=='confirmation'||APP.intakeMode!=='talk'||APP.intakeListening)return;const language=APP.intakeLanguage==='Hindi'?'hi-IN':'en-IN';const text=APP.intakeLanguage==='Hindi'?'क्या यह सही है? “सही है” कहें या सुधार के लिए बटन दबाएं।':'Is this prescription preview correct? Say sahi hai or correct, or use the correction button.';speakText({text,lang:language,onEnd:()=>{const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition){APP.intakeListening=false;showToast('Speech input is unavailable. Use the confirmation button.');return;}const recognition=new Recognition();recognition.lang=language;recognition.interimResults=false;APP.intakeListening=true;recognition.onresult=event=>{APP.intakeListening=false;const answer=String(event.results[0][0].transcript||'').toLowerCase();if(/sahi|correct|yes|haan|हां|हाँ/.test(answer))confirmIntakePreview();else showToast('Please say sahi hai or use the correction button.');};recognition.onerror=()=>{APP.intakeListening=false;showToast('I could not hear confirmation. Use the button to continue.');};recognition.start();}});};
 window.sendClinicalIntake=async()=>{try{const result=await apiRequest('/intake/'+APP.intakeDraftId+'/send-to-hip/',{method:'POST'});APP.intakeData={...APP.intakeData,...result};APP.intakeStage='success';render();}catch(error){showToast(error.message||'Unable to send summary');}};
-window.setTab=t=>{APP.tab=t;APP.screen=null;APP.search="";APP.showSortSidebar=false;window.scrollTo(0,0);render();}
+window.setTab=t=>{APP.tab=t;APP.screen=null;APP.search="";APP.showSortSidebar=false;window.scrollTo(0,0);render();if(t==='profile'&&!APP.ors.requests.length)loadORSRequests(false);}
 window.setScreen=s=>{APP.screen=s;APP.showSortSidebar=false;window.scrollTo(0,0);render();}
+window.openORSBooking=async()=>{APP.ors={...APP.ors,step:1,hospital:null,availability:[],bedType:'',department:'',reason:APP.symInput||APP.symRes?.advice||'',date:'',notes:'',request:null,loading:true};setScreen('ors-bed-booking');try{APP.ors.hospitals=(await apiRequest('/ors/hospitals/')).hospitals||[];}catch(error){showToast(error.message||'Unable to load ORS Demo hospitals');}finally{APP.ors.loading=false;render();}};
+window.selectORSHospital=async id=>{APP.ors.hospital=APP.ors.hospitals.find(item=>item.id===id)||null;APP.ors.availability=[];APP.ors.bedType='';APP.ors.step=2;render();try{APP.ors.availability=(await apiRequest('/ors/hospitals/'+id+'/availability/')).availability||[];}catch(error){showToast(error.message||'Unable to load demo availability');}finally{render();}};
+window.nextORSStep=()=>{if(APP.ors.step===2&&!APP.ors.bedType){showToast('Choose a bed category');return;}if(APP.ors.step===2&&!APP.ors.department){showToast('Choose a department');return;}if(APP.ors.step===3){APP.ors.reason=document.getElementById('orsReason')?.value?.trim()||'';APP.ors.date=document.getElementById('orsDate')?.value||'';APP.ors.notes=document.getElementById('orsNotes')?.value?.trim()||'';}APP.ors.step+=1;render();};
+window.submitORSRequest=async()=>{APP.ors.loading=true;render();try{const result=await apiRequest('/ors/bed-requests/',{method:'POST',body:JSON.stringify({phone:APP.loginPhone,hospital_id:APP.ors.hospital.id,department:APP.ors.department,bed_type:APP.ors.bedType,admission_reason:APP.ors.reason,preferred_admission_date:APP.ors.date||null,notes:APP.ors.notes})});APP.ors.request=result.request;loadORSRequests(false);}catch(error){showToast(error.message||'Unable to submit ORS Demo request');}finally{APP.ors.loading=false;render();}};
+window.loadORSRequests=async(showLoading=true)=>{if(showLoading){APP.ors.loading=true;render();}try{APP.ors.requests=(await apiRequest('/ors/bed-requests/')).requests||[];}catch(error){showToast(error.message||'Unable to load care requests');}finally{APP.ors.loading=false;render();}};
 window.goDoc=id=>{const d=DOCTORS.find(x=>x.id===id);if(d){APP.selDoc=d;APP.selSlot=null;APP.booked=false;APP.screen="booking";render();}}
 window.openMap=id=>{APP.mapDoc=id?DOCTORS.find(x=>x.id===id)||null:null;APP.screen="map";APP.mapMode='clinics';render();}
 window.setFamIdx=i=>{APP.famIdx=i;render();}
@@ -1829,6 +1886,7 @@ window.saveScannedRecord = async () => {
   APP.scannedData = null;
   APP.screen = null;
   render();
+  if(hasSavedSession)validateCachedSession();
   showToast('Record saved securely to Vault! 🔐');
 };
 

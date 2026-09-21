@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
 	ClinicalPatientAssignment, DigiLockerDocument, OAuthState, OTP,
+	ORSBedRequest,
 	PrescriptionDraft, PrescriptionMedicine, UserProfile,
 	ClinicalIntakeSession,
 )
@@ -15,6 +16,13 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 admin.site.register(OTP)
 admin.site.register(DigiLockerDocument)
+
+
+@admin.register(ORSBedRequest)
+class ORSBedRequestAdmin(admin.ModelAdmin):
+	list_display = ('ors_reference', 'patient', 'hospital_name', 'bed_type', 'status', 'created_at')
+	list_filter = ('status', 'bed_type', 'hospital_name')
+	search_fields = ('ors_reference', 'patient__phone_number', 'hospital_name')
 admin.site.register(ClinicalPatientAssignment)
 admin.site.register(OAuthState)
 admin.site.register(PrescriptionDraft)
